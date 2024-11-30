@@ -1,2 +1,1 @@
-# A.Fib-Detection-Module
-This is a project that classifies Atrial fibrillation within a MC module
+This project details an application designed to classify the presence of arrythmia based on ecg data with minimal computing resources
