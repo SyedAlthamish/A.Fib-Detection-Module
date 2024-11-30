@@ -1,0 +1,6 @@
+1. The pico inputs data through the USB interface one after the other with each interrupt till buffer. Ideally through the ADC.
+2. The pico buffers 15 seconds of 200hz data into a list
+2.5. During the following steps, each interrupt of USB interfaced data causes the next buffer of same size as above to be filled.
+3. The data_list undergoes the Pan-Tompkins algorithm
+4. The Classification parameter is estimated 
+5. Data is classified and displayed.

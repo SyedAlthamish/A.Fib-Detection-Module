@@ -1,3 +1,12 @@
+'''{
+    File Description:
+        This file contains the implementation of the classification
+        algorithm and performance estimation. The base paper for classification
+        is the "langley2012.pdf" given under papers subfolder i.e. Mean 
+        successive beat interval difference. The basis of performance 
+        estimation is accuracy. The data used is taken from Data subfolder.
+    }'''
+
 import random
 import pandas as pd
 import matplotlib.pyplot as plt
