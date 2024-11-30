@@ -1,4 +1,4 @@
-#import random
+import random
 import pandas as pd
 #loading the support dataframe
 df = pd.read_csv('Data\coorteeqsrafva.csv', sep=';', header=0, index_col=0)
@@ -24,9 +24,18 @@ import matplotlib.pyplot as plt
 afib_df=df.copy()
 # normal_case = random.choice(list(afib_df[afib_df['ritmi']=='SR'].index))
 # print(normal_case)
-random_normal_indexes=[4799,310,4780,4653,4943,2024,449]
-random_afibrillation_indexes=[167,2547,819,3868,2376,4925,2320]
-allrelevindexes=np.concatenate([random_normal_indexes, random_afibrillation_indexes])
+
+sr_indices = afib_df[afib_df['ritmi'] == 'SR'].index.tolist()
+af_indices = afib_df[afib_df['ritmi'] == 'AF'].index.tolist()
+master_indices=[]
+noof_epochs=200
+for _ in range(noof_epochs):
+    num_samples = 20  # Change this to the number of indices you want
+    random_SR_indices = random.sample(sr_indices, num_samples)
+    random_AF_indices = random.sample(af_indices, num_samples)
+    random_both_indices= random_AF_indices + random_SR_indices
+    master_indices.append(random_both_indices)
+
 
 # Plot original and smoothed ECG signals
 def plot_ecg_signals(ecg_signal, peaks, derivative_signal):
@@ -184,84 +193,105 @@ def absintervalsdifference(intervals):
         intervalsdifference.append(abs(intervals[i]-intervals[i-1]))
     return intervalsdifference
 
+def prediction_accuracy(pred_list,relev_index):
+    labeled_list= afib_df['ritmi'].iloc[relev_index]
+    totaltrue=sum(labeled_list==pred_list)
+    total=len(labeled_list)
+    accuracy=totaltrue/total
+    return accuracy
+
+predicted_list=[]
 T=1/100
-for i in allrelevindexes: 
-    testdata500= data[i,:,1]
-    testdata=downsample_signal(testdata500, 500, 200)
-    lpftestdata=low_pass_filter(testdata, T)
-    hpftestdata=hpf(lpftestdata, T)
-    difftestdata=differentiate_signal(hpftestdata, T)
-    squaretestdata=square(difftestdata)
-    N=30
-    integratordata=moving_window_integrator(squaretestdata, N)
-    #plot_ecg_signals([0],testdata,integratordata)
+accuracy_list=[]
+for allrelevindexes in master_indices:
+    for i in allrelevindexes: 
+        testdata500= data[i,:,1]
+        testdata=downsample_signal(testdata500, 500, 200)
+        lpftestdata=low_pass_filter(testdata, T)
+        hpftestdata=hpf(lpftestdata, T)
+        difftestdata=differentiate_signal(hpftestdata, T)
+        squaretestdata=square(difftestdata)
+        N=30
+        integratordata=moving_window_integrator(squaretestdata, N)
+        #plot_ecg_signals([0],testdata,integratordata)
+        
+        
+        
+        #################################################################################
+        
+        # def compute_thresholds(signal, peaks, is_signal=True):
+        #     PEAK = max(signal[peaks])
+        #     if is_signal:
+        #         SPK = PEAK
+        #         NPK = np.mean(signal)
+        #     else:
+        #         SPK = np.mean(signal)
+        #         NPK = PEAK
+        #     THRESHOLD1 = NPK + 0.25 * (SPK - NPK)
+        #     THRESHOLD2 = 0.5 * THRESHOLD1
+        #     return THRESHOLD1, THRESHOLD2
+        
+        # def adjust_thresholds_for_irregular_rates(THRESHOLD1, THRESHOLD2):
+        #     THRESHOLD1 *= 0.5
+        #     THRESHOLD2 *= 0.5
+        #     return THRESHOLD1, THRESHOLD2
+        
+        # # Example usage
+        # # Assuming ecg_signal is your ECG signal array
+        # ecg_signal = integratordata # Your ECG signal array
+        
+        # # Detect peaks in the ECG signal
+        # peaks,peakedsignal = detect_peaks(ecg_signal)
+        
+        # # Compute thresholds for the integration waveform
+        # THRESHOLD1_int, THRESHOLD2_int = compute_thresholds(ecg_signal, peaks, is_signal=True)
+        
+        # # Compute thresholds for the filtered ECG signal
+        # THRESHOLD1_filt, THRESHOLD2_filt = compute_thresholds(ecg_signal, peaks, is_signal=False)
+        
+        # # Adjust thresholds for irregular heart rates
+        # THRESHOLD1_int, THRESHOLD2_int = adjust_thresholds_for_irregular_rates(THRESHOLD1_int, THRESHOLD2_int)
+        # THRESHOLD1_filt, THRESHOLD2_filt = adjust_thresholds_for_irregular_rates(THRESHOLD1_filt, THRESHOLD2_filt)
+        
+        peaks=detect_peaks(integratordata)
+        Th1, SigLevel, NoiseLevel = initializethreshold(integratordata)
+        qrspeaks = findqrs(integratordata, peaks, Th1, SigLevel, NoiseLevel)
+        polishedqrs=removeqrsduplicates(qrspeaks)
+        
+        #plot_ecg_signals(integratordata,peaks,testdata)
+        #plot_ecg_signals(integratordata,qrspeaks,testdata)
+        #plot_ecg_signals(integratordata,polishedqrs,testdata)
+        # plt.figure(figsize=(12,8))
+        # #plt.plot(t, waveform, label='Waveform')
+        # plt.scatter(peaks, integratordata[peaks], color='red', label='Peaks')
+        # plt.title('Identifying Peaks in a Waveform')
+        # plt.xlabel('Time')
+        # plt.ylabel('Amplitude')
+        # plt.legend()
+        # plt.grid(True)
+        # plt.show()
+        timeofpeaks=qrspeaks2time(polishedqrs)
+        #print(timeofpeaks)
+        intervals=findintervals(timeofpeaks)
+        #print(intervals)
+        mean=np.mean(intervals)
+        #print(mean)
+        intervaldifference=absintervalsdifference(intervals)
+        #print(intervaldifference)
+        meanintervaldifference=np.mean(intervaldifference)
+        MSBID=meanintervaldifference/mean
+        if (MSBID>0.11): #threshold selected based on paper: "langley2012.pdf"
+            print("AF")
+            predicted_list.append('AF')
+        else:
+            print("SA")
+            predicted_list.append('SR')
+        
+    accuracy = prediction_accuracy(predicted_list,allrelevindexes)
+    print(accuracy)
+    accuracy_list.append(accuracy)
+    predicted_list=[]
+
+mean_accuracy= sum(accuracy_list)/noof_epochs
+
     
-    
-    
-    #################################################################################
-    
-    # def compute_thresholds(signal, peaks, is_signal=True):
-    #     PEAK = max(signal[peaks])
-    #     if is_signal:
-    #         SPK = PEAK
-    #         NPK = np.mean(signal)
-    #     else:
-    #         SPK = np.mean(signal)
-    #         NPK = PEAK
-    #     THRESHOLD1 = NPK + 0.25 * (SPK - NPK)
-    #     THRESHOLD2 = 0.5 * THRESHOLD1
-    #     return THRESHOLD1, THRESHOLD2
-    
-    # def adjust_thresholds_for_irregular_rates(THRESHOLD1, THRESHOLD2):
-    #     THRESHOLD1 *= 0.5
-    #     THRESHOLD2 *= 0.5
-    #     return THRESHOLD1, THRESHOLD2
-    
-    # # Example usage
-    # # Assuming ecg_signal is your ECG signal array
-    # ecg_signal = integratordata # Your ECG signal array
-    
-    # # Detect peaks in the ECG signal
-    # peaks,peakedsignal = detect_peaks(ecg_signal)
-    
-    # # Compute thresholds for the integration waveform
-    # THRESHOLD1_int, THRESHOLD2_int = compute_thresholds(ecg_signal, peaks, is_signal=True)
-    
-    # # Compute thresholds for the filtered ECG signal
-    # THRESHOLD1_filt, THRESHOLD2_filt = compute_thresholds(ecg_signal, peaks, is_signal=False)
-    
-    # # Adjust thresholds for irregular heart rates
-    # THRESHOLD1_int, THRESHOLD2_int = adjust_thresholds_for_irregular_rates(THRESHOLD1_int, THRESHOLD2_int)
-    # THRESHOLD1_filt, THRESHOLD2_filt = adjust_thresholds_for_irregular_rates(THRESHOLD1_filt, THRESHOLD2_filt)
-    
-    peaks=detect_peaks(integratordata)
-    Th1, SigLevel, NoiseLevel = initializethreshold(integratordata)
-    qrspeaks = findqrs(integratordata, peaks, Th1, SigLevel, NoiseLevel)
-    polishedqrs=removeqrsduplicates(qrspeaks)
-    
-    #plot_ecg_signals(integratordata,peaks,testdata)
-    #plot_ecg_signals(integratordata,qrspeaks,testdata)
-    #plot_ecg_signals(integratordata,polishedqrs,testdata)
-    # plt.figure(figsize=(12,8))
-    # #plt.plot(t, waveform, label='Waveform')
-    # plt.scatter(peaks, integratordata[peaks], color='red', label='Peaks')
-    # plt.title('Identifying Peaks in a Waveform')
-    # plt.xlabel('Time')
-    # plt.ylabel('Amplitude')
-    # plt.legend()
-    # plt.grid(True)
-    # plt.show()
-    timeofpeaks=qrspeaks2time(polishedqrs)
-    #print(timeofpeaks)
-    intervals=findintervals(timeofpeaks)
-    #print(intervals)
-    mean=np.mean(intervals)
-    #print(mean)
-    intervaldifference=absintervalsdifference(intervals)
-    #print(intervaldifference)
-    meanintervaldifference=np.mean(intervaldifference)
-    MSBID=meanintervaldifference/mean
-    if (MSBID>0.11): #threshold selected based on paper: "langley2012.pdf"
-        print("AF")
-    else:
-        print("SA")
